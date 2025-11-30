@@ -1,0 +1,22 @@
+# Python 编译缓存
+__pycache__/
+*.py[cod]
+
+# PyInstaller 生成的文件夹和文件 (不要上传 exe)
+build/
+dist/
+*.spec
+
+# 用户数据 (保护隐私)
+users.json
+
+# 自动生成的 bat 脚本
+双击关闭程序.bat
+
+# 自动下载的背景图 (让用户自己下载)
+bg.jpg
+
+# 虚拟环境 (如果有)
+venv/
+env/
+.env

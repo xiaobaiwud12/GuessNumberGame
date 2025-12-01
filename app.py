@@ -8,24 +8,7 @@ from pathlib import Path
 from datetime import datetime
 import base64
 import requests
-from io import BytesIO
-
-# ... import ...
-import sys # 确保导入了 sys
-
-# --- 新增：获取真实的运行目录 ---
-if getattr(sys, 'frozen', False):
-    # 如果是打包后的 exe，使用 exe 所在的文件夹
-    ROOT_DIR = os.path.dirname(sys.executable)
-else:
-    # 如果是脚本运行，使用当前脚本所在的文件夹
-    ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# --- 修改配置路径 ---
-# 使用 os.path.join 拼接路径
-DATA_FILE = os.path.join(ROOT_DIR, "users.json")
-BG_IMAGE = os.path.join(ROOT_DIR, "bg.jpg")
-
+import sys
 
 # 页面配置必须在最前面
 st.set_page_config(
@@ -35,9 +18,17 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# ---------- 获取真实运行目录（支持EXE打包）----------
+if getattr(sys, 'frozen', False):
+    # 如果是打包后的 exe，使用 exe 所在的文件夹
+    ROOT_DIR = os.path.dirname(sys.executable)
+else:
+    # 如果是脚本运行，使用当前脚本所在的文件夹
+    ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # ---------- 配置 ----------
-DATA_FILE = "users.json"
-BG_IMAGE = "bg.jpg"
+DATA_FILE = os.path.join(ROOT_DIR, "users.json")
+BG_IMAGE = os.path.join(ROOT_DIR, "bg.jpg")
 SECRET_MIN, SECRET_MAX = 1, 100
 LOLICON_API = "https://api.lolicon.app/setu/v2"
 
@@ -75,7 +66,7 @@ def get_base64_of_bin_file(bin_file):
     return base64.b64encode(data).decode()
 
 def fetch_lolicon_image():
-    """从Lolicon API获取背景图片（横屏版本）"""
+    """从Lolicon API获取背景图片（横屏版本）- 支持多反代"""
     # 中国大陆可用的反代列表（按优先级排序）
     proxy_list = [
         "i.pixiv.cat",      # 国内可用的反代1
@@ -86,12 +77,11 @@ def fetch_lolicon_image():
     
     for proxy in proxy_list:
         try:
-            # 请求参数：r18=0 表示非R18内容
             params = {
                 "r18": 0,
-                "num": 5,  # 获取5张图片，增加找到横屏图的概率
-                "size": ["original"],  # 请求原始尺寸
-                "proxy": proxy  # 使用当前反代服务器
+                "num": 10,
+                "size": ["regular"],  # 使用regular更稳定
+                "proxy": proxy
             }
             
             st.info(f"🔄 尝试使用反代: {proxy}")
@@ -101,32 +91,27 @@ def fetch_lolicon_image():
                 data = response.json()
                 
                 if data.get("error"):
-                    st.warning(f"API错误: {data.get('error')}，尝试下一个反代...")
+                    st.warning(f"API错误，尝试下一个反代...")
                     continue
                 
                 if data.get("data") and len(data["data"]) > 0:
-                    # 筛选横屏图片（宽度 > 高度）
+                    # 筛选横屏图片
                     landscape_images = []
                     for artwork in data["data"]:
                         width = artwork.get('width', 0)
                         height = artwork.get('height', 0)
-                        # 只选择横屏图片，且宽高比至少为 1.2:1
                         if width > height and width / height >= 1.2:
                             landscape_images.append(artwork)
                     
-                    # 如果没有找到横屏图片，使用第一张
                     if not landscape_images:
-                        st.info("⚠️ 未找到横屏图片，使用默认图片")
                         landscape_images = [data["data"][0]]
                     
-                    # 尝试每一张横屏图片，直到成功下载
-                    for artwork in landscape_images:
-                        # 优先获取原始尺寸
+                    # 尝试下载前3张横屏图片
+                    for artwork in landscape_images[:3]:
                         image_url = None
                         if "urls" in artwork:
                             urls = artwork["urls"]
-                            # 按优先级尝试：original > regular > small
-                            image_url = urls.get("original") or urls.get("regular") or urls.get("small")
+                            image_url = urls.get("regular") or urls.get("original") or urls.get("small")
                         
                         if not image_url:
                             continue
@@ -135,78 +120,49 @@ def fetch_lolicon_image():
                         height = artwork.get('height', '?')
                         aspect_ratio = f"{width/height:.2f}:1" if isinstance(width, int) and isinstance(height, int) else "?"
                         
-                        st.info(f"🎨 正在下载全尺寸横屏图片 (分辨率: {width}x{height}, 宽高比: {aspect_ratio})")
+                        st.info(f"🎨 正在下载横屏图片 ({width}x{height}, 宽高比: {aspect_ratio})")
                         
-                        # 设置请求头，模拟浏览器访问
                         headers = {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                             'Referer': 'https://www.pixiv.net/',
-                            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                            'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
                             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                            'Accept-Encoding': 'gzip, deflate, br'
                         }
                         
                         try:
-                            # 下载图片，全尺寸图片可能较大，给予充足时间
                             img_response = requests.get(image_url, headers=headers, timeout=45, stream=True)
                             
                             if img_response.status_code == 200:
-                                # 保存图片
-                                total_size = 0
                                 with open(BG_IMAGE, 'wb') as f:
                                     for chunk in img_response.iter_content(chunk_size=8192):
                                         if chunk:
                                             f.write(chunk)
-                                            total_size += len(chunk)
                                 
-                                # 验证文件是否成功保存
                                 if os.path.exists(BG_IMAGE) and os.path.getsize(BG_IMAGE) > 0:
-                                    file_size = os.path.getsize(BG_IMAGE) / (1024 * 1024)  # MB
-                                    st.success(f"✅ 全尺寸横屏图片下载成功！")
-                                    st.success(f"📐 分辨率: {width}x{height} | 大小: {file_size:.2f}MB | 反代: {proxy}")
+                                    file_size = os.path.getsize(BG_IMAGE) / (1024 * 1024)
+                                    st.success(f"✅ 图片下载成功！{width}x{height}, {file_size:.2f}MB, 反代: {proxy}")
                                     return True
-                                else:
-                                    st.warning("文件保存失败，尝试下一张图片...")
-                                    continue
                             elif img_response.status_code == 403:
-                                st.warning(f"403 Forbidden，尝试下一个反代...")
-                                break  # 403错误说明这个反代不可用，直接尝试下一个反代
-                            elif img_response.status_code == 500:
-                                st.warning(f"500 服务器错误，尝试下一张图片...")
-                                continue
+                                st.warning(f"403错误，尝试下一个反代...")
+                                break
                             else:
-                                st.warning(f"HTTP {img_response.status_code}，尝试下一张图片...")
                                 continue
                                 
                         except requests.exceptions.Timeout:
-                            st.warning(f"⏱️ 下载超时（可能文件较大），尝试下一张图片...")
+                            st.warning(f"下载超时，尝试下一张...")
                             continue
                         except Exception as e:
-                            st.warning(f"下载失败: {str(e)}，尝试下一张图片...")
+                            st.warning(f"下载失败，尝试下一张...")
                             continue
                     
-                    # 当前反代的所有图片都下载失败，尝试下一个反代
-                    st.warning(f"反代 {proxy} 的所有图片下载失败，尝试下一个反代...")
+                    st.warning(f"反代 {proxy} 的图片下载失败，尝试下一个反代...")
                     continue
-                else:
-                    st.warning(f"反代 {proxy} 未返回图片数据，尝试下一个反代...")
-                    continue
-            else:
-                st.warning(f"反代 {proxy} API请求失败: HTTP {response.status_code}，尝试下一个反代...")
-                continue
-                
-        except requests.exceptions.Timeout:
-            st.warning(f"⏱️ 反代 {proxy} 请求超时，尝试下一个反代...")
-            continue
-        except requests.exceptions.RequestException as e:
-            st.warning(f"🌐 反代 {proxy} 网络错误: {str(e)}，尝试下一个反代...")
-            continue
+                    
         except Exception as e:
-            st.warning(f"❌ 反代 {proxy} 发生错误: {str(e)}，尝试下一个反代...")
+            st.warning(f"反代 {proxy} 发生错误，尝试下一个...")
             continue
     
-    # 所有反代都失败
-    st.error("❌ 所有反代服务器都无法使用，请稍后重试或检查网络连接")
+    st.error("❌ 所有反代服务器都无法使用，请稍后重试")
     st.info("💡 提示：如果持续失败，可能需要使用VPN或等待服务恢复")
     return False
 
@@ -234,8 +190,6 @@ def inject_css(bg_exists: bool):
             background-attachment: fixed !important;
             background-position: center top !important;
             background-repeat: no-repeat !important;
-            margin: 0 !important;
-            padding: 0 !important;
         }}
         """
     else:
@@ -244,9 +198,6 @@ def inject_css(bg_exists: bool):
             background: linear-gradient(-45deg, #0f2027, #203a43, #2c5364, #243b55) !important;
             background-size: 400% 400% !important;
             animation: gradientBG 15s ease infinite;
-            margin: 0 !important;
-            padding: 0 !important;
-            height: 100%;
         }
         @keyframes gradientBG {
             0% { background-position: 0% 50%; }
@@ -257,7 +208,7 @@ def inject_css(bg_exists: bool):
 
     css = f"""
     <style>
-    /* ================= 全局重置 ================= */
+    /* 全局重置 */
     * {{
         margin: 0;
         padding: 0;
@@ -270,46 +221,27 @@ def inject_css(bg_exists: bool):
         margin: 0 !important;
         padding: 0 !important;
         overflow-x: hidden !important;
-        height: 100%;
     }}
 
-    /* ================= 隐藏无关 UI ================= */
-    header, footer, #MainMenu, .stDeployButton, [data-testid="stHeader"] {{
-        visibility: hidden !important;
-        display: none !important;
-        height: 0 !important;
-    }}
-    
-    [data-testid="stToolbar"], [data-testid="stDecoration"], [data-testid="stStatusWidget"], section[data-testid="stSidebar"] {{
+    /* 隐藏无关 UI */
+    header, footer, #MainMenu, .stDeployButton, [data-testid="stHeader"],
+    [data-testid="stToolbar"], [data-testid="stDecoration"], 
+    [data-testid="stStatusWidget"], section[data-testid="stSidebar"] {{
         display: none !important;
     }}
 
-    /* ================= 布局容器 ================= */
-    .stApp {{
-        background: transparent !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        top: 0 !important;
-    }}
-    
-    .main, [data-testid="stAppViewContainer"], .block-container {{
+    .stApp, .main, [data-testid="stAppViewContainer"], .block-container {{
         padding-top: 0 !important;
         margin-top: 0 !important;
         background: transparent !important;
     }}
     
     .block-container {{
-        padding-bottom: 2rem !important;
         max-width: 900px !important;
-    }}
-    
-    .center {{
-        margin: 0 auto;
-        padding: 10px;
-        max-width: 900px;
+        padding-bottom: 2rem !important;
     }}
 
-    /* ================= 标题 ================= */
+    /* 标题 */
     .title-outside {{
         text-align: center;
         margin-top: 40px;
@@ -335,10 +267,8 @@ def inject_css(bg_exists: bool):
         color: white !important;
         text-shadow: 0 2px 12px rgba(0,0,0,0.4);
     }}
-    
-    h4 {{ margin-top: 15px !important; }}
 
-    /* ================= 玻璃大卡片 ================= */
+    /* 玻璃大卡片 */
     .glass {{
         padding: 30px;
         border-radius: 24px;
@@ -352,7 +282,7 @@ def inject_css(bg_exists: bool):
         margin: 20px 0;
     }}
 
-    /* ================= 自定义液态玻璃提示框 (核心修改) ================= */
+    /* 自定义液态玻璃提示框 */
     .glass-alert {{
         padding: 16px 20px;
         border-radius: 16px;
@@ -374,48 +304,39 @@ def inject_css(bg_exists: bool):
         to {{ opacity: 1; transform: translateY(0); }}
     }}
 
-    /* 🔴 红色液态玻璃 (猜小了) */
     .glass-alert-red {{
-        background: rgba(255, 59, 48, 0.2); /* iOS Red Transparent */
+        background: rgba(255, 59, 48, 0.2);
         border-left: 5px solid rgba(255, 59, 48, 0.8);
         text-shadow: 0 0 10px rgba(255, 59, 48, 0.3);
     }}
 
-    /* 🔵 蓝色液态玻璃 (猜大了) */
     .glass-alert-blue {{
-        background: rgba(10, 132, 255, 0.2); /* iOS Blue Transparent */
+        background: rgba(10, 132, 255, 0.2);
         border-left: 5px solid rgba(10, 132, 255, 0.8);
         text-shadow: 0 0 10px rgba(10, 132, 255, 0.3);
     }}
 
-    /* 🟢 绿色液态玻璃 (猜对了/成功) */
     .glass-alert-green {{
-        background: rgba(48, 209, 88, 0.2); /* iOS Green Transparent */
+        background: rgba(48, 209, 88, 0.2);
         border-left: 5px solid rgba(48, 209, 88, 0.8);
         text-shadow: 0 0 10px rgba(48, 209, 88, 0.3);
     }}
     
-    /* ⚠️ 黄色液态玻璃 (警告) */
     .glass-alert-yellow {{
-        background: rgba(255, 159, 10, 0.2); /* iOS Yellow Transparent */
+        background: rgba(255, 159, 10, 0.2);
         border-left: 5px solid rgba(255, 159, 10, 0.8);
     }}
 
-    /* ================= 输入框 (保持之前的核弹级去边框) ================= */
-    .stTextInput div[data-baseweb="input"] {{
+    /* 输入框 - 液态玻璃 */
+    .stTextInput div[data-baseweb="input"],
+    .stTextInput div[data-baseweb="input"]:focus-within,
+    .stTextInput div[data-baseweb="base-input"] {{
         background-color: transparent !important;
-        border: none !important;
-        border-radius: 20px !important;
-        box-shadow: none !important;
-    }}
-    .stTextInput div[data-baseweb="input"]:focus-within {{
         border: none !important;
         box-shadow: none !important;
         outline: none !important;
     }}
-    .stTextInput div[data-baseweb="base-input"] {{
-        background-color: transparent !important;
-    }}
+    
     .stTextInput input {{
         color: white !important;
         caret-color: white !important;
@@ -429,65 +350,186 @@ def inject_css(bg_exists: bool):
         transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
     }}
+    
     .stTextInput input::placeholder {{
         color: rgba(255, 255, 255, 0.6) !important;
         font-weight: 300 !important;
     }}
+    
     .stTextInput input:focus {{
         background: rgba(20, 20, 20, 0.75) !important;
         backdrop-filter: blur(20px) !important;
         border-color: rgba(255, 255, 255, 0.9) !important;
         box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2), 0 10px 30px rgba(0, 0, 0, 0.5) !important;
-        color: white !important;
         transform: translateY(-2px);
     }}
+    
     .stTextInput input[type="password"] {{
         letter-spacing: 3px !important;
         font-weight: 600 !important;
     }}
 
-    /* ================= 按钮 ================= */
-    .stButton > button {{
-        background: rgba(255, 255, 255, 0.1) !important;
+    /* ================= 按钮修复版 (解决点击闪烁问题) ================= */
+    /* 1. 基础样式：作用于所有类型的按钮 */
+    .stButton > button, 
+    div.stButton > button:first-child {{
+        background: rgba(255, 255, 255, 0.1) !important; /* 基础半透明 */
         backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
         color: white !important;
         border: 1px solid rgba(255, 255, 255, 0.3) !important;
         border-radius: 14px !important;
         padding: 10px 24px !important;
         font-weight: 600 !important;
-        transition: all 0.3s ease !important;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2) !important;
+        transition: transform 0.1s, background 0.2s, border-color 0.2s !important; /* 优化过渡 */
     }}
+
+    /* 2. 悬停状态 (Hover) */
     .stButton > button:hover {{
-        background: rgba(255, 255, 255, 0.25) !important;
+        background: rgba(255, 255, 255, 0.25) !important; /* 稍微变亮 */
         border-color: white !important;
         color: white !important;
-        transform: scale(1.02);
-        box-shadow: 0 6px 15px rgba(0,0,0,0.3);
-    }}
-    .stButton > button:active {{
-        transform: scale(0.98);
-        background: rgba(255, 255, 255, 0.15) !important;
+        transform: scale(1.02) !important;
+        box-shadow: 0 6px 15px rgba(0,0,0,0.3) !important;
     }}
 
-    /* ================= 表格与Alert重置 ================= */
-    .stTable table, .stTable th, .stTable td {{
+    /* 3. 点击瞬间/激活状态 (Active) - 关键修复点 */
+    /* 这里的背景色不能是不透明的，必须保持 rgba 格式 */
+    .stButton > button:active,
+    .stButton > button:focus:active {{
+        background-color: rgba(255, 255, 255, 0.35) !important; /* 点击时更亮，但仍透明 */
+        backdrop-filter: blur(12px) !important; /* 保持磨砂 */
+        border-color: rgba(255, 255, 255, 0.6) !important;
         color: white !important;
-        background: rgba(255,255,255,0.05) !important;
-        border-color: rgba(255,255,255,0.1) !important;
+        transform: scale(0.98) !important; /* 按下缩小效果 */
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2) !important;
     }}
-    /* 通用 Alert 透明化 (作为默认样式的兜底) */
-    [data-testid="stAlert"] {{
+
+    /* 4. 聚焦状态 (Focus) - 点击后保留的状态 */
+    /* 防止出现默认的红色/白色边框和背景 */
+    .stButton > button:focus,
+    .stButton > button:focus:not(:active) {{
+        background: rgba(255, 255, 255, 0.1) !important; /* 回复到基础透明度 */
+        border-color: rgba(255, 255, 255, 0.5) !important;
+        color: white !important;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2) !important; /* 白色光晕替代默认红框 */
+        outline: none !important;
+    }}
+
+    /* Radio按钮 */
+    .stRadio > div {{
+        flex-direction: row !important;
+        gap: 12px !important;
+    }}
+
+    .stRadio > div > label {{
+        color: white !important;
         background: rgba(255,255,255,0.1) !important;
-        border: 1px solid rgba(255,255,255,0.2) !important;
-        color: white !important;
-        backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px) !important;
+        padding: 10px 18px !important;
+        border-radius: 12px !important;
+        border: 1px solid rgba(255,255,255,0.25) !important;
+        transition: all 0.3s ease !important;
     }}
 
-    /* 移动端适配 */
+    .stRadio > div > label:hover {{
+        background: rgba(255,255,255,0.2) !important;
+        border-color: rgba(255,255,255,0.4) !important;
+    }}
+
+    /* 表格 - 液态玻璃效果 */
+    .stTable {{
+        border-radius: 16px;
+        overflow: hidden;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }}
+    
+    .stTable table {{
+        color: white !important;
+        background: rgba(255,255,255,0.08) !important;
+        backdrop-filter: blur(16px) saturate(150%) !important;
+        -webkit-backdrop-filter: blur(16px) saturate(150%) !important;
+        border-radius: 16px !important;
+        overflow: hidden !important;
+        border: 1px solid rgba(255,255,255,0.2) !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+    }}
+    
+    .stTable thead {{
+        background: rgba(255,255,255,0.15) !important;
+        backdrop-filter: blur(18px) !important;
+        -webkit-backdrop-filter: blur(18px) !important;
+    }}
+    
+    .stTable th {{
+        color: white !important;
+        background: rgba(255,255,255,0.15) !important;
+        border: 1px solid rgba(255,255,255,0.2) !important;
+        border-top: 1px solid rgba(255,255,255,0.35) !important;
+        padding: 14px 16px !important;
+        font-weight: 600 !important;
+        font-size: 15px !important;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }}
+    
+    .stTable tbody tr {{
+        transition: all 0.3s ease !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+    }}
+    
+    .stTable tbody tr:hover {{
+        background: rgba(255,255,255,0.15) !important;
+        transform: scale(1.01);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
+    }}
+    
+    .stTable td {{
+        color: white !important;
+        background: rgba(255,255,255,0.08) !important;
+        border: 1px solid rgba(255,255,255,0.12) !important;
+        padding: 12px 16px !important;
+        font-size: 14px !important;
+        transition: all 0.3s ease !important;
+    }}
+    
+    /* 排行榜高亮样式 */
+    .stTable tbody tr:first-child {{
+        background: rgba(255, 215, 0, 0.12) !important;
+        border-left: 3px solid rgba(255, 215, 0, 0.8) !important;
+    }}
+    .stTable tbody tr:first-child td {{
+        background: rgba(255, 215, 0, 0.08) !important;
+        font-weight: 600 !important;
+    }}
+    
+    .stTable tbody tr:nth-child(2) {{
+        background: rgba(192, 192, 192, 0.12) !important;
+        border-left: 3px solid rgba(192, 192, 192, 0.8) !important;
+    }}
+    .stTable tbody tr:nth-child(2) td {{
+        background: rgba(192, 192, 192, 0.08) !important;
+        font-weight: 500 !important;
+    }}
+    
+    .stTable tbody tr:nth-child(3) {{
+        background: rgba(205, 127, 50, 0.12) !important;
+        border-left: 3px solid rgba(205, 127, 50, 0.8) !important;
+    }}
+    .stTable tbody tr:nth-child(3) td {{
+        background: rgba(205, 127, 50, 0.08) !important;
+        font-weight: 500 !important;
+    }}
+
+    /* 响应式 */
     @media (max-width: 768px) {{
         .glass {{ padding: 20px; }}
         .title-outside h1 {{ font-size: 28px !important; }}
+        .stTextInput input {{ font-size: 14px !important; }}
     }}
     </style>
     """
@@ -537,7 +579,6 @@ def do_guess(users, username, guess_text):
     st.session_state.guess_count += 1
     secret = st.session_state.secret
 
-    # 使用自定义的 HTML/CSS 替代 st.info，实现真正的液态玻璃颜色
     if guess < secret:
         st.markdown(
             f"""
@@ -561,7 +602,6 @@ def do_guess(users, username, guess_text):
         return False
         
     else:
-        # 猜对了
         st.markdown(
             f"""
             <div class='glass-alert glass-alert-green'>
@@ -587,7 +627,7 @@ def do_guess(users, username, guess_text):
         
         st.session_state.game_ended = True
         return True
-    
+
 # ---------- 排行榜 ----------
 def show_rank(users):
     data = []
@@ -616,14 +656,11 @@ def main():
     ensure_session()
     users = load_users()
     
-    # 检查并获取背景图片
     check_and_fetch_bg()
-    
     inject_css(Path(BG_IMAGE).exists())
 
     st.markdown("<div class='center'>", unsafe_allow_html=True)
     
-    # 标题在玻璃容器外
     st.markdown("""
     <div class='title-outside'>
         <h1>🎮 猜数字游戏</h1>
@@ -728,6 +765,23 @@ def main():
                     st.rerun()
             
             st.markdown(f"**📝 已猜次数：** {st.session_state.guess_count}")
+
+        st.markdown("---")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🚪 退出登录", use_container_width=True):
+                st.session_state.logged_in = False
+                st.session_state.username = None
+                st.rerun()
+        with col2:
+            if st.button("🎨 更换背景", use_container_width=True):
+                with st.spinner("🎨 正在获取新背景..."):
+                    if fetch_lolicon_image():
+                        st.success("✅ 背景更换成功！")
+                        st.rerun()
+                    else:
+                        st.error("❌ 背景更换失败")
 
     st.markdown("</div></div>", unsafe_allow_html=True)
 

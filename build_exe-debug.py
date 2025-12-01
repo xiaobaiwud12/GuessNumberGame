@@ -24,8 +24,7 @@ def build():
         '--onefile',                    # 打包成单文件
         '--clean',                      # 清理缓存
         '--name=GuessNumberGame',       # EXE 的名字
-        '--noconsole',                  # <--- 关键修改：隐藏黑框 (终端窗口)
-        
+
         f'--add-data={add_data_static}',   # 注入 Streamlit 静态资源
         f'--add-data={add_data_runtime}',  # 注入 Runtime
         f'--add-data={add_data_app}',      # 注入源代码

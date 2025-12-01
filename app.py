@@ -33,6 +33,37 @@ SECRET_MIN, SECRET_MAX = 1, 100
 LOLICON_API = "https://api.lolicon.app/setu/v2"
 
 # ---------- 工具函数 ----------
+def create_kill_bat():
+    """在程序目录生成一个【双击关闭程序.bat】"""
+    # 只有在打包成 exe 运行时才执行此逻辑
+    if getattr(sys, 'frozen', False):
+        try:
+            # 1. 获取当前运行的 exe 文件名 (例如 GuessNumberGame.exe)
+            exe_name = os.path.basename(sys.executable)
+            
+            # 2. 定义 bat 文件路径 (在 exe 同级目录)
+            bat_path = os.path.join(ROOT_DIR, "双击关闭程序.bat")
+            
+            # 3. 定义批处理内容
+            # chcp 65001: 防止中文乱码
+            # taskkill /F (强制) /IM (镜像名) /T (包括子进程)
+            bat_content = f"""@echo off
+chcp 65001 >nul
+echo 正在关闭 {exe_name} ...
+taskkill /F /IM "{exe_name}" /T
+echo.
+echo 程序已安全关闭。
+timeout /t 2 >nul
+exit
+"""
+            # 4. 写入文件 (使用 gbk 或 utf-8 均可，这里用 utf-8 配合 chcp 65001)
+            with open(bat_path, "w", encoding="utf-8") as f:
+                f.write(bat_content)
+                
+        except Exception as e:
+            # 也就是静默失败，不影响主程序
+            pass
+
 def hash_pw(pw: str) -> str:
     return hashlib.sha256(pw.encode("utf-8")).hexdigest()
 
@@ -653,6 +684,7 @@ def show_rank(users):
 
 # ---------- 主 UI ----------
 def main():
+    create_kill_bat()
     ensure_session()
     users = load_users()
     

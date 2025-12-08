@@ -17,7 +17,7 @@
 - **动态交互反馈**：
   - 📉 **猜小了**：红色液态玻璃提示框
   - 📈 **猜大了**：蓝色液态玻璃提示框
-  - 🎉 **猜对了**：绿色液态玻璃提示框 + 气球庆祝动画
+  - 🎉 **猜对了**：绿色液态玻璃提示框
 
 ### 🛠️ 核心功能
 - **账号系统**：轻量级本地数据存储 (`users.json`)，支持注册与登录
@@ -25,11 +25,12 @@
 - **动态背景**：
   - 启动时自动从 API 获取高清二次元横屏壁纸
   - 智能反代节点切换，下载失败自动回退至深色流光渐变背景
+  - 可以由用户自行从`Lolicon_api`获取新的背景（`bg.jpg`）
 
 ### 📦 部署与运行优化
 - **单文件 EXE**：基于 PyInstaller 打包，内置 Python 环境，无需配置即可运行
 - **静默运行**：打包后无黑色控制台窗口，纯净体验
-- **智能进程管理**：程序启动时自动在同级目录生成 `双击关闭程序.bat`，解决无窗口模式下难以彻底关闭后台进程的问题
+- **智能进程管理**：程序启动时自动在同级目录生成 `双击关闭程序.bat`，解决无终端模式下难以彻底关闭后台进程的问题
 
 ---
 
@@ -39,14 +40,14 @@
 1. 下载 Release 中的 `GuessNumberGame.exe`
 2. 双击运行，等待浏览器自动打开
 3. 程序会自动下载背景图 (`bg.jpg`) 并生成数据文件 (`users.json`)
-4. **如何退出**：由于隐藏了后台窗口，请双击目录下的 **`双击关闭程序.bat`** 来彻底结束游戏进程
+4. **如何退出**：由于隐藏了终端窗口，请双击目录下的 **`双击关闭程序.bat`** 来彻底结束游戏进程
 
 ### 方式二：源码运行 (开发者模式)
 
 1. **克隆仓库**
    ```bash
-   git clone https://github.com/your-username/liquid-glass-guess-game.git
-   cd liquid-glass-guess-game
+   git clone https://github.com/xiaobaiwud12/GuessNumberGame
+   cd GuessNumberGame
    ```
 
 2. **安装依赖**
@@ -83,12 +84,12 @@ python build_exe.py
 ## 📂 项目结构
 
 ```
-liquid-glass-guess-game/
+GuessNumberGame/
 ├── app.py              # 核心代码：UI 渲染、CSS 注入、游戏逻辑
-├── run.py              # 启动脚本：伪装 Streamlit CLI 入口
+├── run.py              # 启动脚本：通过 Streamlit CLI 运行主程序`app.py`
 ├── build_exe.py        # 编译脚本：PyInstaller 自动化打包配置
-├── users.json          # 数据文件：存储用户信息 (自动生成)
-├── bg.jpg              # 资源文件：背景图片 (自动下载)
+├── users.json          # 数据文件：存储用户信息 (自动生成，同时记录用户最佳成绩)
+├── bg.jpg              # 资源文件：背景图片 (自动下载,也可以通过重命名jepg格式图片来自定义)
 └── README.md           # 项目文档
 ```
 
